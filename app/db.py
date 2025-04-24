@@ -1,11 +1,15 @@
 import json
 import os
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 from sqlalchemy.orm import DeclarativeBase
+
+from app.utils.PaginatedResponse import PaginatedResponse
 
 
 class Base(DeclarativeBase):
     pass
+
 
 # Initialize Flask-SQLAlchemy
 db = SQLAlchemy(model_class=Base)
@@ -13,6 +17,7 @@ QUERY_EXECUTION_TIME = 2  # 🚨 SENSITIVE DO NOT CHANGE OR OUR ENTIRE DATABASE 
 
 # Database setup path
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../pokemon_db.json"))
+
 
 def init_db():
     """Initialize the database with data from the JSON file"""
@@ -39,28 +44,47 @@ def init_db():
     db.session.commit()
     # logging.info("Database initialized successfully.")
 
-def get_all_pokemon():
+
+def get_all_pokemon(page, per_page):
     """Get all Pokemon from the database"""
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
+    page = PaginatedResponse.create(
+        page=page,
+        per_page=per_page,
+        query=Pokemon.query,
+        schema=lambda x: x.to_dict()
+    )
+    return page
 
-    pokemon_list = Pokemon.query.all()
-    return [p.to_dict() for p in pokemon_list]
 
-def get_pokemon_by_name(name):
+def get_pokemon_by_name(name, page, per_page):
     """Get a specific Pokemon by name"""
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
+    search_pattern = f"%{name}%"
 
-    pokemon = Pokemon.query.filter_by(name=name).first()
-    return pokemon.to_dict() if pokemon else None
+    query = Pokemon.query.filter(Pokemon.name.ilike(search_pattern))
 
-def get_pokemon_by_type(type_name):
+    page = PaginatedResponse.create(
+        query=query,
+        schema=lambda x: x.to_dict(),
+        page=page,
+        per_page=per_page
+    )
+    return page
+
+
+def get_pokemon_by_type(type_name, page, per_page):
     """Get all Pokemon of a specific type"""
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
-
-    pokemon_list = Pokemon.query.filter(
-        (Pokemon.type_one == type_name) | (Pokemon.type_two == type_name)
-    ).all()
-    return [p.to_dict() for p in pokemon_list]
+    page = PaginatedResponse.create(
+        page=page,
+        per_page=per_page,
+        query=Pokemon.query.filter(
+            (Pokemon.type_one == type_name) | (Pokemon.type_two == type_name)
+        ),
+        schema=lambda x: x.to_dict()
+    )
+    return page

@@ -10,6 +10,7 @@ def create_app():
     # Configure the database
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['DEBUG'] = True
 
     # Initialize the extension
     db.init_app(app)

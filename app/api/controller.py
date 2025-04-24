@@ -12,22 +12,6 @@ def get_icon_url(name: str):
     return f"https://img.pokemondb.net/sprites/silver/normal/{name}.png"
 
 
-@api.route('/')
-def get_all_pokemon_route():
-    """Get all Pokemon"""
-    data = get_all_pokemon()
-    return jsonify(data)
-
-
-@api.route('/pokemon/<name>')
-def get_pokemon_by_name_route(name: str):
-    """Get a specific Pokémon by name"""
-    pokemon = get_pokemon_by_name(name)
-    if not pokemon:
-        return jsonify({"error": "Pokemon not found"}), 404
-    return jsonify(pokemon)
-
-
 @api.route('/type/<type_name>')
 def get_pokemon_by_type_route(type_name: str):
     """Get all Pokemon of a specific type"""
@@ -38,16 +22,22 @@ def get_pokemon_by_type_route(type_name: str):
 @api.route('/search')
 def search_pokemon():
     """Search Pokemon by various criteria"""
-    query_params = request.args
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    name = request.args.get('name')
+    poke_type = request.args.get('type')
+
+    # Cap per_page to avoid performance issues
+    per_page = min(per_page, 100)
 
     # Example implementation - you could expand this based on your needs
-    if 'name' in query_params:
-        pokemon = get_pokemon_by_name(query_params['name'])
+    if name is not None:
+        pokemon = get_pokemon_by_name(name,page,per_page)
         return jsonify([pokemon] if pokemon else [])
 
-    if 'type' in query_params:
-        pokemon_list = get_pokemon_by_type(query_params['type'])
+    if poke_type is not None:
+        pokemon_list = get_pokemon_by_type(poke_type,page,per_page)
         return jsonify(pokemon_list)
 
     # Default to returning all Pokemon
-    return jsonify(get_all_pokemon())
+    return jsonify(get_all_pokemon(page,per_page))
