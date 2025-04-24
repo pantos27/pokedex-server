@@ -35,5 +35,7 @@ class Pokemon(db.Model):
             'special_defense': self.special_defense,
             'speed': self.speed,
             'generation': self.generation,
-            'legendary': self.legendary
+            'legendary': self.legendary,
+            'icon': f"https://img.pokemondb.net/sprites/silver/normal/{self.name.lower()}.png",
+            'image': f"https://img.pokemondb.net/artwork/{self.name.lower()}.jpg"
         }

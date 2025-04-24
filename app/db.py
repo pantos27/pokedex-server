@@ -1,7 +1,6 @@
 import json
 import os
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
 from sqlalchemy.orm import DeclarativeBase
 
 from app.utils.PaginatedResponse import PaginatedResponse
