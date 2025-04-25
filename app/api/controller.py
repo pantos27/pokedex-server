@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.repository import get_all_pokemon, get_pokemon_by_name, get_pokemon_by_type
+from app.repository import get_all_pokemon, get_pokemon_by_name, get_pokemon_by_type, get_all_pokemon_types
 
 # Create a blueprint for the API routes
 api = Blueprint('api', __name__)
@@ -19,7 +19,7 @@ def get_pokemon_by_type_route(type_name: str):
     per_page = request.args.get('per_page', 10, type=int)
     per_page = min(per_page, 100)
 
-    pokemon_list = get_pokemon_by_type(type_name,page,per_page)
+    pokemon_list = get_pokemon_by_type(type_name, page, per_page)
     return jsonify(pokemon_list)
 
 
@@ -41,12 +41,19 @@ def search_pokemon():
 
     # Example implementation - you could expand this based on your needs
     if name is not None:
-        pokemon = get_pokemon_by_name(name,page,per_page,sort_order)
+        pokemon = get_pokemon_by_name(name, page, per_page, sort_order)
         return jsonify([pokemon] if pokemon else [])
 
     if poke_type is not None:
-        pokemon_list = get_pokemon_by_type(poke_type,page,per_page,sort_order)
+        pokemon_list = get_pokemon_by_type(poke_type, page, per_page, sort_order)
         return jsonify(pokemon_list)
 
     # Default to returning all Pokemon
-    return jsonify(get_all_pokemon(page,per_page,sort_order))
+    return jsonify(get_all_pokemon(page, per_page, sort_order))
+
+
+@api.route('/types')
+def get_all_types():
+    """Get all unique Pokemon types"""
+    types = get_all_pokemon_types()
+    return jsonify(types)

@@ -1,6 +1,4 @@
-import json
 import logging
-import os
 import time
 
 from flask_sqlalchemy import SQLAlchemy
@@ -27,6 +25,7 @@ def get_sort(sort_order):
     return (
         Pokemon.number.asc() if sort_order.lower() == 'asc' else Pokemon.number.desc()
     )
+
 
 def init_db():
     """Initialize the database with data from the JSON file"""
@@ -132,3 +131,27 @@ def get_pokemon_by_type(type_name, page, per_page, sort_order='asc'):
     )
     wait()
     return page
+
+
+def get_all_pokemon_types():
+    """
+    Get all unique Pokemon types from both type_one and type_two fields
+
+    Returns:
+        list: A sorted list of all unique Pokemon types
+    """
+    # Import here to avoid circular imports
+    from .models.Pokemon import Pokemon
+
+    # Create a single query that combines type_one and type_two values using union
+    type_one_query = db.session.query(Pokemon.type_one.label('type')).distinct()
+    type_two_query = db.session.query(Pokemon.type_two.label('type')).distinct()
+
+    # Use the union method on the query object
+    combined_query = type_one_query.union(type_two_query)
+    all_types = combined_query.all()
+
+    # Extract values, remove empty strings, and sort
+    unique_types = sorted({t[0] for t in all_types if t[0]})
+    wait()
+    return unique_types
