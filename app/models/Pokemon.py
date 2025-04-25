@@ -1,5 +1,5 @@
 # Define the Pokémon model
-from app.db import db
+from app.repository import db
 
 
 class Pokemon(db.Model):
