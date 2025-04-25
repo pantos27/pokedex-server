@@ -31,26 +31,33 @@ def init_db():
     """Initialize the database with data from the JSON file"""
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
+    from .models.User import User
 
     # Create all tables
     db.create_all()
 
-    # Check if data already exists
+    # Check if Pokemon data already exists
     if Pokemon.query.first() is not None:
-        logging.info("Database already contains data, skipping initialization.")
-        return
+        logging.info("Database already contains Pokemon data, skipping initialization.")
+    else:
+        # Load JSON data
+        from db import get
+        pokemon_data = get()
 
-    # Load JSON data
-    from db import get
-    pokemon_data = get()
+        # Populate database with Pokemon
+        for pokemon in pokemon_data:
+            p = Pokemon(**pokemon)
+            db.session.add(p)
 
-    # Populate database
-    for pokemon in pokemon_data:
-        p = Pokemon(**pokemon)
-        db.session.add(p)
+        db.session.commit()
+        logging.info("Pokemon data initialized successfully.")
 
-    db.session.commit()
-    logging.info("Database initialized successfully.")
+    # Create a default user if none exists
+    if User.query.first() is None:
+        default_user = User(user_name="admin")
+        db.session.add(default_user)
+        db.session.commit()
+        logging.info("Default user created successfully.")
 
 
 def get_all_pokemon(page, per_page, sort_order='asc'):
@@ -155,3 +162,62 @@ def get_all_pokemon_types():
     unique_types = sorted({t[0] for t in all_types if t[0]})
     wait()
     return unique_types
+
+
+def get_all_users(page, per_page):
+    """
+    Get all users from the database
+
+    Args:
+        page (int): Page number
+        per_page (int): Items per page
+    """
+    # Import here to avoid circular imports
+    from .models.User import User
+
+    # Apply sorting by creation date (newest first)
+    query = User.query.order_by(User.created_at.desc())
+
+    page = PaginatedResponse.create(
+        page=page,
+        per_page=per_page,
+        query=query,
+        schema=lambda x: x.to_dict()
+    )
+    wait()
+    return page
+
+
+def get_user_by_id(user_id):
+    """
+    Get a user by ID
+
+    Args:
+        user_id (str): The UUID of the user to retrieve
+    """
+    # Import here to avoid circular imports
+    from .models.User import User
+
+    user = User.query.get(user_id)
+    wait()
+    return user.to_dict() if user else None
+
+
+def create_user(user_name):
+    """
+    Create a new user
+
+    Args:
+        user_name (str): The username for the new user
+
+    Returns:
+        dict: The created user as a dictionary
+    """
+    # Import here to avoid circular imports
+    from .models.User import User
+
+    user = User(user_name=user_name)
+    db.session.add(user)
+    db.session.commit()
+    wait()
+    return user.to_dict()

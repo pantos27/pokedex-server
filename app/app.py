@@ -2,7 +2,8 @@ from flask import Flask
 from flask_cors import CORS
 
 from .repository import db, init_db
-from .api.controller import api
+from .api.pokemon_controller import api
+from .api.user_controller import user_api
 
 
 def create_app():
@@ -20,8 +21,9 @@ def create_app():
     # Initialize the extension
     db.init_app(app)
 
-    # Register the blueprint
+    # Register the blueprints
     app.register_blueprint(api)
+    app.register_blueprint(user_api)
 
     # Initialize the database
     with app.app_context():

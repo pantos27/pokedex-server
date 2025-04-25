@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from app.repository import get_all_pokemon, get_pokemon_by_name, get_pokemon_by_type, get_all_pokemon_types
 
 # Create a blueprint for the API routes
-api = Blueprint('api', __name__)
+api = Blueprint('api', __name__, url_prefix='/api/pokemon')
 
 
 @api.route('/icon/<name>')
