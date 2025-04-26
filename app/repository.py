@@ -88,20 +88,28 @@ def get_all_pokemon(page, per_page, sort_order='asc'):
 
 def get_pokemon_by_name(name, page, per_page, sort_order='asc'):
     """
-    Get Pokemon by name (fuzzy search)
+    Get Pokemon by fuzzy text search on all fields
 
     Args:
-        name (str): Name or partial name to search for
+        name (str): Text to search for across all Pokemon fields
         page (int): Page number
         per_page (int): Items per page
         sort_order (str): Sort order ('asc' or 'desc')
     """
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
+    from sqlalchemy import or_
     search_pattern = f"%{name}%"
 
-    # Create a base query with name filter
-    query = Pokemon.query.filter(Pokemon.name.ilike(search_pattern)).order_by(get_sort(sort_order))
+    # Create a base query with filters for all fields
+    query = Pokemon.query.filter(
+        or_(
+            # String fields
+            Pokemon.name.ilike(search_pattern),
+            Pokemon.type_one.ilike(search_pattern),
+            Pokemon.type_two.ilike(search_pattern),
+        )
+    ).order_by(get_sort(sort_order))
 
     page = PaginatedResponse.create(
         query=query,
@@ -200,7 +208,6 @@ def get_user_by_id(user_id):
     from .models.User import User
 
     user = User.query.get(user_id)
-    wait()
     return user.to_dict() if user else None
 
 
@@ -220,7 +227,6 @@ def create_user(user_name):
     user = User(user_name=user_name)
     db.session.add(user)
     db.session.commit()
-    wait()
     return user.to_dict()
 
 
