@@ -16,7 +16,11 @@ class Base(DeclarativeBase):
 db = SQLAlchemy(model_class=Base)
 
 def wait():
-    time.sleep(QUERY_EXECUTION_TIME)
+    from flask import current_app
+    if current_app.config.get('TESTING', False):
+        time.sleep(0)
+    else:
+        time.sleep(QUERY_EXECUTION_TIME)
 
 
 def get_sort(sort_order):
