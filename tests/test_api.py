@@ -28,9 +28,8 @@ def test_get_pokemon_by_type(client):
             assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
 
 
-def test_search_pokemon(client):
-    """Test the endpoint to search Pokemon."""
-    # Test search by name
+def test_search_pokemon_by_name(client):
+    """Test the endpoint to search Pokemon by name."""
     response = client.get('/api/pokemon/search?name=bulbasaur')
     assert response.status_code == 200
 
@@ -42,7 +41,9 @@ def test_search_pokemon(client):
         for pokemon in data[0]['items']:
             assert 'bulbasaur' in pokemon['name'].lower()
 
-    # Test search by type
+
+def test_search_pokemon_by_type(client):
+    """Test the endpoint to search Pokemon by type."""
     response = client.get('/api/pokemon/search?type=grass')
     assert response.status_code == 200
 
@@ -54,13 +55,27 @@ def test_search_pokemon(client):
         for pokemon in data['items']:
             assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
 
-    # Test pagination
+
+def test_search_pokemon_pagination(client):
+    """Test the pagination of Pokemon search results."""
     response = client.get('/api/pokemon/search?page=2&per_page=5')
     assert response.status_code == 200
 
-    # Test sort order
+    data = json.loads(response.data)
+    assert isinstance(data, dict)
+    assert 'items' in data
+    assert 'meta' in data
+    assert data['meta']['page'] == 2
+    assert data['meta']['per_page'] == 5
+
+
+def test_search_pokemon_sort_order(client):
+    """Test the sort order of Pokemon search results."""
     response_asc = client.get('/api/pokemon/search?sort_order=asc')
     response_desc = client.get('/api/pokemon/search?sort_order=desc')
+
+    assert response_asc.status_code == 200
+    assert response_desc.status_code == 200
 
     data_asc = json.loads(response_asc.data)
     data_desc = json.loads(response_desc.data)
@@ -80,7 +95,7 @@ def test_get_icon_url(client):
     assert b"https://img.pokemondb.net/sprites/silver/normal/bulbasaur.png" in response.data
 
 
-def test_user_api(client, app):
+def test_user_api(client):
     """Test the user API endpoints."""
     # First, create a user
     response = client.post('/api/users', json={'user_name': 'testuser'})
@@ -101,7 +116,7 @@ def test_user_api(client, app):
     assert data['user_name'] == 'testuser'
 
 
-def test_capture_api(client, app):
+def test_capture_api(client):
     """Test the capture API endpoints."""
     # First, create a user
     response = client.post('/api/users', json={'user_name': 'captureuser'})
