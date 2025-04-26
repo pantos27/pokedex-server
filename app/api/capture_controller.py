@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.repository import create_capture
+from app.repository.captured_repository import create_capture
 
 # Create a blueprint for the capture API routes
 capture_api = Blueprint('capture_api', __name__, url_prefix='/api/captures')

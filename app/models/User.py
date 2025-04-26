@@ -12,12 +12,9 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now())
 
     def to_dict(self):
-        # Get the set of captured pokemon IDs
-        captured_pokemon_ids = [capture.pokemon_id for capture in self.captures]
-
         return {
             'id': self.id,
             'user_name': self.user_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'captured_pokemon': captured_pokemon_ids
+            'captured_pokemon': [capture.pokemon_id for capture in self.captures]
         }

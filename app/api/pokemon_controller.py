@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.repository import get_all_pokemon, get_pokemon, get_all_pokemon_types
+from app.repository.pokemon_repository import get_pokemon, get_all_pokemon_types
 
 # Create a blueprint for the API routes
 api = Blueprint('api', __name__, url_prefix='/api/pokemon')
