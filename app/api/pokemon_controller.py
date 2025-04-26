@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.repository import get_all_pokemon, get_pokemon_by_name, get_pokemon_by_type, get_all_pokemon_types
+from app.repository import get_all_pokemon, get_pokemon, get_all_pokemon_types
 
 # Create a blueprint for the API routes
 api = Blueprint('api', __name__, url_prefix='/api/pokemon')
@@ -8,18 +8,18 @@ api = Blueprint('api', __name__, url_prefix='/api/pokemon')
 
 @api.route('/icon/<name>')
 def get_icon_url(name: str):
-    """Get the icon URL for a Pokemon"""
+    """Get the icon URL for a Pokémon"""
     return f"https://img.pokemondb.net/sprites/silver/normal/{name.lower()}.png"
 
 
 @api.route('/type/<type_name>')
 def get_pokemon_by_type_route(type_name: str):
-    """Get all Pokemon of a specific type"""
+    """Get all Pokémon of a specific type"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     per_page = min(per_page, 100)
 
-    pokemon_list = get_pokemon_by_type(type_name, page, per_page)
+    pokemon_list = get_pokemon(type_name=type_name, page=page, per_page=per_page)
     return jsonify(pokemon_list)
 
 
@@ -39,17 +39,16 @@ def search_pokemon():
     # Cap per_page to avoid performance issues
     per_page = min(per_page, 100)
 
-    # Example implementation - you could expand this based on your needs
-    if name is not None:
-        pokemon = get_pokemon_by_name(name, page, per_page, sort_order)
-        return jsonify([pokemon] if pokemon else [])
+    # Use the unified get_pokemon function with appropriate parameters
+    pokemon_list = get_pokemon(
+        name=name, 
+        type_name=poke_type, 
+        page=page, 
+        per_page=per_page, 
+        sort_order=sort_order
+    )
 
-    if poke_type is not None:
-        pokemon_list = get_pokemon_by_type(poke_type, page, per_page, sort_order)
-        return jsonify(pokemon_list)
-
-    # Default to returning all Pokemon
-    return jsonify(get_all_pokemon(page, per_page, sort_order))
+    return jsonify(pokemon_list)
 
 
 @api.route('/types')

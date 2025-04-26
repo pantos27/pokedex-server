@@ -55,7 +55,7 @@ def init_db():
 
 def get_all_pokemon(page, per_page, sort_order='asc'):
     """
-    Get all Pokemon from the database
+    Get all Pokémon from the database
 
     Args:
         page (int): Page number
@@ -65,7 +65,7 @@ def get_all_pokemon(page, per_page, sort_order='asc'):
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
 
-    # Apply sorting by Pokemon number
+    # Apply sorting by Pokémon number
     query = Pokemon.query.order_by(get_sort(sort_order))
 
     page = PaginatedResponse.create(
@@ -78,12 +78,13 @@ def get_all_pokemon(page, per_page, sort_order='asc'):
     return page
 
 
-def get_pokemon_by_name(name, page, per_page, sort_order='asc'):
+def get_pokemon(name=None, type_name=None, page=1, per_page=10, sort_order='asc'):
     """
-    Get Pokemon by fuzzy text search on all fields
+    Get Pokémon with optional filtering by name and/or type
 
     Args:
-        name (str): Text to search for across all Pokemon fields
+        name (str, optional): Text to search for across Pokemon name and type fields
+        type_name (str, optional): Type to filter by
         page (int): Page number
         per_page (int): Items per page
         sort_order (str): Sort order ('asc' or 'desc')
@@ -91,18 +92,32 @@ def get_pokemon_by_name(name, page, per_page, sort_order='asc'):
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
     from sqlalchemy import or_
-    search_pattern = f"%{name}%"
 
-    # Create a base query with filters for all fields
-    query = Pokemon.query.filter(
-        or_(
-            # String fields
-            Pokemon.name.ilike(search_pattern),
-            Pokemon.type_one.ilike(search_pattern),
-            Pokemon.type_two.ilike(search_pattern),
+    # Start with a base query
+    query = Pokemon.query
+
+    # Apply name filter if provided
+    if name:
+        search_pattern = f"%{name}%"
+        query = query.filter(
+            or_(
+                # String fields for name search
+                Pokemon.name.ilike(search_pattern),
+                Pokemon.type_one.ilike(search_pattern),
+                Pokemon.type_two.ilike(search_pattern),
+            )
         )
-    ).order_by(get_sort(sort_order))
 
+    # Apply type filter if provided
+    if type_name:
+        query = query.filter(
+            (Pokemon.type_one == type_name) | (Pokemon.type_two == type_name)
+        )
+
+    # Apply sorting
+    query = query.order_by(get_sort(sort_order))
+
+    # Create a paginated response
     page = PaginatedResponse.create(
         query=query,
         schema=lambda x: x.to_dict(),
@@ -113,40 +128,12 @@ def get_pokemon_by_name(name, page, per_page, sort_order='asc'):
     return page
 
 
-def get_pokemon_by_type(type_name, page, per_page, sort_order='asc'):
-    """
-    Get all Pokemon of a specific type
-
-    Args:
-        type_name (str): Type to filter by
-        page (int): Page number
-        per_page (int): Items per page
-        sort_order (str): Sort order ('asc' or 'desc')
-    """
-    # Import here to avoid circular imports
-    from .models.Pokemon import Pokemon
-
-    # Create a base query with a type filter
-    query = Pokemon.query.filter(
-        (Pokemon.type_one == type_name) | (Pokemon.type_two == type_name)
-    ).order_by(get_sort(sort_order))
-
-    page = PaginatedResponse.create(
-        page=page,
-        per_page=per_page,
-        query=query,
-        schema=lambda x: x.to_dict()
-    )
-    wait()
-    return page
-
-
 def get_all_pokemon_types():
     """
-    Get all unique Pokemon types from both type_one and type_two fields
+    Get all unique Pokémon types from both type_one and type_two fields
 
     Returns:
-        list: A sorted list of all unique Pokemon types
+        list: A sorted list of all unique Pokémon types
     """
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon

@@ -1,8 +1,7 @@
 import pytest
 from app.repository import (
     get_all_pokemon,
-    get_pokemon_by_name,
-    get_pokemon_by_type,
+    get_pokemon,
     get_all_pokemon_types,
     get_user_by_id,
     create_user,
@@ -33,42 +32,6 @@ def test_get_all_pokemon(app):
             assert result_asc['items'][0]['id'] != result_desc['items'][0]['id']
 
 
-def test_get_pokemon_by_name(app):
-    """Test searching Pokemon by name."""
-    with app.app_context():
-        # Test with a name that should exist
-        result = get_pokemon_by_name('bulbasaur', 1, 10)
-        assert isinstance(result, dict)
-        assert 'items' in result
-
-        # If we found any results, check they contain the search term
-        if result['items']:
-            for pokemon in result['items']:
-                assert 'bulbasaur' in pokemon['name'].lower()
-
-        # Test with a name that shouldn't exist
-        result = get_pokemon_by_name('nonexistentpokemon', 1, 10)
-        assert len(result['items']) == 0
-
-
-def test_get_pokemon_by_type(app):
-    """Test retrieving Pokemon by type."""
-    with app.app_context():
-        # Test with a type that should exist
-        result = get_pokemon_by_type('grass', 1, 10)
-        assert isinstance(result, dict)
-        assert 'items' in result
-
-        # If we found any results, check they have the correct type
-        if result['items']:
-            for pokemon in result['items']:
-                assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
-
-        # Test with a type that shouldn't exist
-        result = get_pokemon_by_type('nonexistenttype', 1, 10)
-        assert len(result['items']) == 0
-
-
 def test_get_all_pokemon_types(app):
     """Test retrieving all Pokemon types."""
     with app.app_context():
@@ -76,6 +39,42 @@ def test_get_all_pokemon_types(app):
         assert isinstance(result, list)
         # There should be at least some types
         assert len(result) > 0
+
+
+def test_get_pokemon_unified(app):
+    """Test the unified get_pokemon function with different parameter combinations."""
+    with app.app_context():
+        # Test with no filters (should return all Pokemon)
+        result = get_pokemon()
+        assert isinstance(result, dict)
+        assert 'items' in result
+        assert 'meta' in result
+        assert len(result['items']) > 0
+
+        # Test with name filter only
+        result = get_pokemon(name='bulbasaur')
+        assert isinstance(result, dict)
+        assert 'items' in result
+        if result['items']:
+            for pokemon in result['items']:
+                assert 'bulbasaur' in pokemon['name'].lower()
+
+        # Test with type filter only
+        result = get_pokemon(type_name='grass')
+        assert isinstance(result, dict)
+        assert 'items' in result
+        if result['items']:
+            for pokemon in result['items']:
+                assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
+
+        # Test with both name and type filters
+        result = get_pokemon(name='saur', type_name='grass')
+        assert isinstance(result, dict)
+        assert 'items' in result
+        if result['items']:
+            for pokemon in result['items']:
+                assert 'saur' in pokemon['name'].lower()
+                assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
 
 
 def test_user_operations(app):

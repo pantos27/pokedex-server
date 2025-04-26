@@ -29,30 +29,51 @@ def test_get_pokemon_by_type(client):
 
 
 def test_search_pokemon_by_name(client):
-    """Test the endpoint to search Pokemon by name."""
+    """Test the endpoint to search Pokémon by name."""
     response = client.get('/api/pokemon/search?name=bulbasaur')
     assert response.status_code == 200
 
     data = json.loads(response.data)
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert 'items' in data
 
     # If we have results, verify they match the search term
-    if data and len(data) > 0 and 'items' in data[0]:
-        for pokemon in data[0]['items']:
+    if data['items']:
+        for pokemon in data['items']:
             assert 'bulbasaur' in pokemon['name'].lower()
 
 
 def test_search_pokemon_by_type(client):
-    """Test the endpoint to search Pokemon by type."""
+    """Test the endpoint to search Pokémon by type."""
     response = client.get('/api/pokemon/search?type=grass')
     assert response.status_code == 200
 
     data = json.loads(response.data)
     assert isinstance(data, dict)
+    assert 'items' in data
 
     # If we have results, verify they have the correct type
     if 'items' in data and data['items']:
         for pokemon in data['items']:
+            assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
+
+
+def test_search_pokemon_by_name_and_type(client):
+    """Test the endpoint to search Pokemon by both name and type."""
+    # Use a common type like 'grass' and a partial name that should match multiple Pokemon
+    response = client.get('/api/pokemon/search?name=saur&type=grass')
+    assert response.status_code == 200
+
+    data = json.loads(response.data)
+    assert isinstance(data, dict)
+    assert 'items' in data
+
+    # If we have results, verify they match both criteria
+    if data['items']:
+        for pokemon in data['items']:
+            # Check that the name contains 'saur'
+            assert 'saur' in pokemon['name'].lower()
+            # Check that the type is 'grass'
             assert pokemon['type_one'].lower() == 'grass' or pokemon['type_two'].lower() == 'grass'
 
 
