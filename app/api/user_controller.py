@@ -5,18 +5,18 @@ from app.repository import get_all_users, get_user_by_id, create_user
 # Create a blueprint for the user API routes
 user_api = Blueprint('user_api', __name__, url_prefix='/api/users')
 
-
-@user_api.route('', methods=['GET'])
-def get_users():
-    """Get all users with pagination"""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    
-    # Cap per_page to avoid performance issues
-    per_page = min(per_page, 100)
-    
-    users = get_all_users(page, per_page)
-    return jsonify(users)
+#
+# @user_api.route('', methods=['GET'])
+# def get_users():
+#     """Get all users with pagination"""
+#     page = request.args.get('page', 1, type=int)
+#     per_page = request.args.get('per_page', 10, type=int)
+#
+#     # Cap per_page to avoid performance issues
+#     per_page = min(per_page, 100)
+#
+#     users = get_all_users(page, per_page)
+#     return jsonify(users)
 
 
 @user_api.route('/<user_id>', methods=['GET'])
