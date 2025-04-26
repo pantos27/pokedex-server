@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-QUERY_EXECUTION_TIME = 2  # 🚨 SENSITIVE DO NOT CHANGE OR OUR ENTIRE DATABASE WILL BURN 🚨
+QUERY_EXECUTION_TIME = 0  # 🚨 SENSITIVE DO NOT CHANGE OR OUR ENTIRE DATABASE WILL BURN 🚨
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "pokemon_db.json"))
 
 

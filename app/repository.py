@@ -15,7 +15,6 @@ class Base(DeclarativeBase):
 # Initialize Flask-SQLAlchemy
 db = SQLAlchemy(model_class=Base)
 
-
 def wait():
     time.sleep(QUERY_EXECUTION_TIME)
 
@@ -37,7 +36,7 @@ def init_db():
     # Create all tables
     db.create_all()
 
-    # Check if Pokemon data already exists
+    # Check if Pokémon data already exists
     if Pokemon.query.first() is not None:
         logging.info("Database already contains Pokemon data, skipping initialization.")
     else:
@@ -45,20 +44,13 @@ def init_db():
         from db import get
         pokemon_data = get()
 
-        # Populate database with Pokemon
+        # Populate database with Pokémon
         for pokemon in pokemon_data:
             p = Pokemon(**pokemon)
             db.session.add(p)
 
         db.session.commit()
         logging.info("Pokemon data initialized successfully.")
-
-    # Create a default user if none exists
-    if User.query.first() is None:
-        default_user = User(user_name="admin")
-        db.session.add(default_user)
-        db.session.commit()
-        logging.info("Default user created successfully.")
 
 
 def get_all_pokemon(page, per_page, sort_order='asc'):
@@ -134,7 +126,7 @@ def get_pokemon_by_type(type_name, page, per_page, sort_order='asc'):
     # Import here to avoid circular imports
     from .models.Pokemon import Pokemon
 
-    # Create a base query with type filter
+    # Create a base query with a type filter
     query = Pokemon.query.filter(
         (Pokemon.type_one == type_name) | (Pokemon.type_two == type_name)
     ).order_by(get_sort(sort_order))
@@ -207,7 +199,7 @@ def get_user_by_id(user_id):
     # Import here to avoid circular imports
     from .models.User import User
 
-    user = User.query.get(user_id)
+    user = db.session.get(User,user_id)
     return user.to_dict() if user else None
 
 
@@ -247,11 +239,11 @@ def create_capture(user_id, pokemon_id):
     from .models.Pokemon import Pokemon
 
     # Verify that the user and pokemon exist
-    user = User.query.get(user_id)
+    user = db.session.get(User,user_id)
     if not user:
         raise ValueError(f"User with ID {user_id} not found")
 
-    pokemon = Pokemon.query.get(pokemon_id)
+    pokemon = db.session.get(Pokemon,pokemon_id)
     if not pokemon:
         raise ValueError(f"Pokemon with ID {pokemon_id} not found")
 
