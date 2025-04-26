@@ -25,7 +25,7 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest --verbose --cov=app
+        python -m pytest
 
   build:
     runs-on: ubuntu-latest
