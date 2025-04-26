@@ -6,13 +6,7 @@ from app.repository import db, init_db
 def app():
     """Create and configure a Flask app for testing."""
     from app import create_app
-    app = create_app()
-    
-    app.config['TESTING'] = True
-    
-    # Create the database and load test data
-    with app.app_context():
-        init_db()
+    app = create_app(test=True)
 
     yield app
     

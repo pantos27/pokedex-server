@@ -6,7 +6,7 @@ from .api.user_controller import user_api
 from .api.capture_controller import capture_api
 
 
-def create_app():
+def create_app(test: bool = False):
     """Create and configure the Flask application"""
     app = Flask(__name__)
 
@@ -14,6 +14,7 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['DEBUG'] = True
+    app.config['TESTING'] = test
 
     # Initialize the extension
     db.init_app(app)
