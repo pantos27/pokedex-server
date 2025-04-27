@@ -1,12 +1,10 @@
 import pytest
-from app.repository import (
-    get_all_pokemon,
-    get_pokemon,
-    get_all_pokemon_types,
+from app.repository.user_repository import (
     get_user_by_id,
-    create_user,
-    create_capture
+    create_user
 )
+from app.repository.captured_repository import create_capture
+from app.repository.pokemon_repository import get_all_pokemon, get_all_pokemon_types, get_pokemon
 
 
 def test_get_all_pokemon(app):

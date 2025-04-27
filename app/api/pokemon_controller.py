@@ -2,7 +2,6 @@ from flask import Blueprint, jsonify, request
 
 from app.repository.pokemon_repository import get_pokemon, get_all_pokemon_types
 
-# Create a blueprint for the API routes
 api = Blueprint('api', __name__, url_prefix='/api/pokemon')
 
 
@@ -36,10 +35,8 @@ def search_pokemon():
     name = request.args.get('name')
     poke_type = request.args.get('type')
 
-    # Cap per_page to avoid performance issues
     per_page = min(per_page, 100)
 
-    # Use the unified get_pokemon function with appropriate parameters
     pokemon_list = get_pokemon(
         name=name, 
         type_name=poke_type, 

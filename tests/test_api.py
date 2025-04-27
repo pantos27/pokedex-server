@@ -1,4 +1,6 @@
 import json
+from wsgiref import headers
+
 import pytest
 
 
@@ -149,13 +151,11 @@ def test_capture_api(client):
     # Then, create a capture
     pokemon_id = 1  # Assuming Pokemon with ID 1 exists
     response = client.post(f'/api/captures', json={
-        'user_id': user_id,
         'pokemon_id': pokemon_id
-    })
+    }, headers={'X-User-ID': str(user_id)})
     assert response.status_code == 201
 
     data = json.loads(response.data)
-    assert data['user_id'] == user_id
     assert data['pokemon_id'] == pokemon_id
 
     # Verify the user has the captured Pokemon

@@ -30,10 +30,8 @@ def init_db():
     from app.models.User import User
     from app.models.Captured import Captured
 
-    # Create all tables
     db.create_all()
 
-    # Check if Pokémon data already exists
     if Pokemon.query.first() is not None:
         logging.info("Database already contains Pokemon data, skipping initialization.")
     else:

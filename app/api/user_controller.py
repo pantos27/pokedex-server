@@ -2,7 +2,6 @@ from flask import Blueprint, jsonify, request
 
 from app.repository.user_repository import get_user_by_id, create_user
 
-# Create a blueprint for the user API routes
 user_api = Blueprint('user_api', __name__, url_prefix='/api/users')
 
 
@@ -25,7 +24,6 @@ def create_new_user():
 
     user_name = data['user_name']
 
-    # Basic validation
     if not user_name or not isinstance(user_name, str):
         return jsonify({"error": "user_name must be a non-empty string"}), 400
 

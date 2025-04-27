@@ -18,7 +18,6 @@ def create_new_capture():
 
     pokemon_id = data['pokemon_id']
 
-    # Convert pokemon_id to integer if needed
     if not isinstance(pokemon_id, int):
         try:
             pokemon_id = int(pokemon_id)

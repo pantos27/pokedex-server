@@ -1,5 +1,7 @@
 from app.repository.base_repository import db, wait
-
+from app.models.Captured import Captured
+from app.models.User import User
+from app.models.Pokemon import Pokemon
 
 def create_capture(user_id, pokemon_id):
     """
@@ -12,10 +14,6 @@ def create_capture(user_id, pokemon_id):
     Returns:
         dict: The created capture record as a dictionary
     """
-    # Import here to avoid circular imports
-    from app.models.Captured import Captured
-    from app.models.User import User
-    from app.models.Pokemon import Pokemon
 
     # Verify that the user and pokemon exist
     user = db.session.get(User, user_id)

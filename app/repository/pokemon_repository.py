@@ -2,10 +2,10 @@ from sqlalchemy import or_
 
 from app.repository.base_repository import db, wait
 from app.utils.PaginatedResponse import PaginatedResponse
+from app.models.Pokemon import Pokemon
 
 
 def get_sort(sort_order):
-    from app.models.Pokemon import Pokemon
     return (
         Pokemon.number.asc() if sort_order.lower() == 'asc' else Pokemon.number.desc()
     )
@@ -20,10 +20,7 @@ def get_all_pokemon(page, per_page, sort_order='asc'):
         per_page (int): Items per page
         sort_order (str): Sort order ('asc' or 'desc')
     """
-    # Import here to avoid circular imports
-    from app.models.Pokemon import Pokemon
 
-    # Apply sorting by Pokémon number
     query = Pokemon.query.order_by(get_sort(sort_order))
 
     page = PaginatedResponse.create(
@@ -47,8 +44,6 @@ def get_pokemon(name=None, type_name=None, page=1, per_page=10, sort_order='asc'
         per_page (int): Items per page
         sort_order (str): Sort order ('asc' or 'desc')
     """
-    # Import here to avoid circular imports
-    from app.models.Pokemon import Pokemon
 
     # Start with a base query
     query = Pokemon.query
@@ -92,14 +87,10 @@ def get_all_pokemon_types():
     Returns:
         list: A sorted list of all unique Pokémon types
     """
-    # Import here to avoid circular imports
-    from app.models.Pokemon import Pokemon
 
-    # Create a single query that combines type_one and type_two values using union
     type_one_query = db.session.query(Pokemon.type_one.label('type')).distinct()
     type_two_query = db.session.query(Pokemon.type_two.label('type')).distinct()
 
-    # Use the union method on the query object
     combined_query = type_one_query.union(type_two_query)
     all_types = combined_query.all()
 
