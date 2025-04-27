@@ -10,12 +10,12 @@ capture_api = Blueprint('capture_api', __name__, url_prefix='/api/captures')
 def create_new_capture():
     """Create a new capture record"""
     data = request.get_json()
+    user_id = request.headers.get('X-User-ID')
 
     # Validate request data
-    if not data or 'user_id' not in data or 'pokemon_id' not in data:
+    if not data or 'pokemon_id' not in data or not user_id:
         return jsonify({"error": "Request must include user_id and pokemon_id"}), 400
 
-    user_id = data['user_id']
     pokemon_id = data['pokemon_id']
 
     # Convert pokemon_id to integer if needed

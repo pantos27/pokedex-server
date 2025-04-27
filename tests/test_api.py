@@ -163,4 +163,5 @@ def test_capture_api(client):
     assert response.status_code == 200
 
     data = json.loads(response.data)
-    assert pokemon_id in data['captured_pokemon']
+    # Check if any of the capture objects has the expected pokemon_id
+    assert any(capture['pokemon_id'] == pokemon_id for capture in data['captured_pokemon'])

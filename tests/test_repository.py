@@ -110,4 +110,5 @@ def test_capture_operations(app):
 
         # Verify the user has the captured Pokemon
         user = get_user_by_id(user_id)
-        assert pokemon_id in user['captured_pokemon']
+        # Check if any of the capture objects has the expected pokemon_id
+        assert any(capture['pokemon_id'] == pokemon_id for capture in user['captured_pokemon'])

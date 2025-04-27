@@ -16,5 +16,5 @@ class User(db.Model):
             'id': self.id,
             'user_name': self.user_name,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'captured_pokemon': [capture.pokemon_id for capture in self.captures]
+            'captured_pokemon': [capture.to_dict() for capture in self.captures]
         }
