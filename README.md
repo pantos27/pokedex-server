@@ -3,6 +3,8 @@
 
 A Flask-based API for Pokemon data.
 
+See client project [here](https://github.com/pantos27/pokedex-client)
+
 ## Setup and Installation
 
 ### Option 1: Local Development
