@@ -1,4 +1,3 @@
-
 # Pokedex API
 
 A Flask-based API for Pokemon data.
@@ -79,3 +78,48 @@ Current test coverage is over 90%, ensuring that most of the codebase is tested.
 ### Adding New Tests
 
 When adding new features, please also add corresponding tests to maintain high test coverage. Follow the existing patterns in the test files for consistency.
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "API Layer (Controllers)"
+        A[pokemon_controller]
+        B[user_controller]
+        C[capture_controller]
+    end
+
+    subgraph "Repository Layer"
+        D[pokemon_repository]
+        E[user_repository]
+        F[captured_repository]
+        G[base_repository]
+    end
+
+    subgraph "Model Layer"
+        H[Pokemon]
+        I[User]
+        J[Captured]
+    end
+
+    subgraph "Utils"
+        K[PaginatedResponse]
+    end
+
+    A --> D
+    B --> E
+    C --> F
+
+    D --> H
+    D --> K
+    D --> G
+
+    E --> I
+    E --> K
+    E --> G
+
+    F --> H
+    F --> I
+    F --> J
+    F --> G
+```
