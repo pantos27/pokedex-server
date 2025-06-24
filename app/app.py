@@ -1,9 +1,26 @@
+import asyncio
+import threading
+
 from flask import Flask
 
 from .repository import db, init_db
 from .api.pokemon_controller import api
 from .api.user_controller import user_api
 from .api.capture_controller import capture_api
+from .utils.rabbitmq_service import rabbitmq_service
+
+
+def run_rabbitmq_service():
+    """Run the RabbitMQ service in a separate thread with its own event loop"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def start_service():
+        if await rabbitmq_service.initialize():
+            await rabbitmq_service.start_consuming()
+
+    loop.run_until_complete(start_service())
+    loop.run_forever()
 
 
 def create_app(test: bool = False):
@@ -27,5 +44,11 @@ def create_app(test: bool = False):
     # Initialize the database
     with app.app_context():
         init_db()
+
+        # Initialize and run RabbitMQ service in a separate thread (only if not in test mode)
+        if not test:
+            rabbitmq_thread = threading.Thread(target=run_rabbitmq_service, daemon=True)
+            rabbitmq_thread.start()
+            app.logger.info("RabbitMQ service started in a background thread")
 
     return app
