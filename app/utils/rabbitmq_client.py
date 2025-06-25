@@ -281,3 +281,16 @@ class RabbitMQClient:
 
 
 rabbitmq_client = RabbitMQClient()
+
+# Decorator for message handler registration
+def message_handler(message_type: str, message_class: Type[BaseModel], has_response: bool = False):
+    """Decorator to register a function as a message handler."""
+    def decorator(func):
+        rabbitmq_client.register_handler(
+            message_type=message_type,
+            message_class=message_class,
+            handler=func,
+            has_response=has_response
+        )
+        return func
+    return decorator
