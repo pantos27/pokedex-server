@@ -1,27 +1,24 @@
 import asyncio
 import json
 import logging
-from typing import Callable, Dict, Any, Tuple, Type, Optional
+from typing import Callable, Dict, Any, Tuple, Type, Optional, cast
 
 import pika
-from dataclasses import fields, is_dataclass, dataclass
+from pydantic import BaseModel
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
-
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class StatusCheckMessage:
+class StatusCheckMessage(BaseModel):
     """Status check message structure"""
     timestamp: str
-    request_id: str
-    source: str
+    request_id: int
+    source: int
 
 
-@dataclass
-class SaveUserCommand:
+class SaveUserCommand(BaseModel):
     """Save user command message structure"""
     user_id: str
     user_name: str
@@ -33,6 +30,7 @@ class RabbitMQClient:
     """RabbitMQ client for handling message consumption and publishing"""
 
     def __init__(self, host='localhost', port=5672, username='guest', password='guest'):
+        self.reconnect_attempts = 0
         self.host = host
         self.port = port
         self.username = username
@@ -47,12 +45,12 @@ class RabbitMQClient:
         self.queue_name = 'master-queue'
 
         # Message handlers
-        self.message_handlers: Dict[str, Tuple[Type, Callable, bool]] = {}
+        self.message_handlers: Dict[str, Tuple[Type[BaseModel], Callable, bool]] = {}
 
     def register_handler(self, message_type: str, message_class: Type, handler: Callable, has_response: bool = False):
         """Register a handler for a specific message type"""
-        if not is_dataclass(message_class):
-            raise TypeError("message_class must be a dataclass")
+        if not issubclass(message_class, BaseModel):
+            raise TypeError("message_class must inherit from pydantic BaseModel")
         self.message_handlers[message_type] = (message_class, handler, has_response)
 
     def _get_credentials(self):
@@ -64,7 +62,6 @@ class RabbitMQClient:
             return
         logger.info(f"Connecting to RabbitMQ at {self.host}:{self.port}")
         try:
-            # Directly instantiate AsyncioConnection (do not use loop.create_connection)
             self._connection = AsyncioConnection(
                 pika.ConnectionParameters(
                     host=self.host,
@@ -82,14 +79,20 @@ class RabbitMQClient:
             await self.reconnect()
 
     async def reconnect(self):
-        logger.info("Attempting to reconnect...")
-        await asyncio.sleep(5)
-        await self.connect()
+        if self.reconnect_attempts < 5:
+            logger.info(f"Attempting to reconnect... ({self.reconnect_attempts})")
+            self.reconnect_attempts += 1
+            await asyncio.sleep(5)
+            await self.connect()
+        else:
+            logger.info("Failed to reconnect")
+            asyncio.get_running_loop().call_exception_handler({"message": "Failed to reconnect msg"})
 
     def on_connection_open(self, connection: AsyncioConnection):
         logger.info('Connection opened')
+        self.reconnect_attempts = 0
         self._connection = connection
-        self.open_channel()
+        self._connection.channel(on_open_callback=self.on_channel_open)
 
     def on_connection_open_error(self, connection: AsyncioConnection, err):
         logger.error(f'Connection open failed: {err}')
@@ -102,45 +105,28 @@ class RabbitMQClient:
         if not self._closing:
             asyncio.get_running_loop().create_task(self.reconnect())
 
-    def open_channel(self):
-        logger.info('Creating a new channel')
-        if self._connection:
-            self._connection.channel(on_open_callback=self.on_channel_open)
-
     def on_channel_open(self, channel: Channel):
         logger.info('Channel opened')
         self._channel = channel
-        self.setup_exchange()
-        # Do NOT start consuming here; wait until after queue is bound
-
-    def setup_exchange(self):
-        logger.info(f'Declaring exchange: {self.exchange_name}')
         if self._channel:
             self._channel.exchange_declare(
                 exchange=self.exchange_name,
                 exchange_type='topic',
                 durable=True,
-                callback=self.on_exchange_declareok
+                callback=self.on_exchange_declared
             )
 
-    def on_exchange_declareok(self, frame):
+    def on_exchange_declared(self, frame):
         logger.info('Exchange declared')
-        self.setup_queue()
-
-    def setup_queue(self):
-        logger.info(f'Declaring queue: {self.queue_name}')
         if self._channel:
             self._channel.queue_declare(
                 queue=self.queue_name,
                 durable=True,
-                callback=self.on_queue_declareok
+                callback=self.on_queue_declared
             )
 
-    def on_queue_declareok(self, frame):
+    def on_queue_declared(self, frame):
         logger.info('Queue declared')
-        self.bind_queues()
-
-    def bind_queues(self):
         if not self.message_handlers:
             logger.warning("No message handlers registered. Binding queue with '#' to receive all messages.")
             routing_key = '#'
@@ -154,7 +140,8 @@ class RabbitMQClient:
         else:
             for message_type in self.message_handlers.keys():
                 routing_key = f"*.{message_type}"
-                logger.info(f"Binding queue {self.queue_name} to exchange {self.exchange_name} with routing key {routing_key}")
+                logger.info(
+                    f"Binding queue {self.queue_name} to exchange {self.exchange_name} with routing key {routing_key}")
                 if self._channel:
                     self._channel.queue_bind(
                         self.queue_name,
@@ -173,10 +160,12 @@ class RabbitMQClient:
         logger.info("Starting consumer")
         if self._channel:
             self._channel.basic_qos(prefetch_count=1)
+
             def on_message_wrapper(channel, basic_deliver, properties, body):
                 asyncio.get_running_loop().create_task(
                     self.on_message(channel, basic_deliver, properties, body)
                 )
+
             self._consumer_tag = self._channel.basic_consume(
                 self.queue_name, on_message_wrapper
             )
@@ -194,28 +183,37 @@ class RabbitMQClient:
     async def on_message(self, channel, basic_deliver, properties, body):
         message_type = properties.headers.get('__TypeId__')
         try:
-            message_data = json.loads(body.decode('utf-8'))
+            # message_data = json.loads(body.decode('utf-8'))
             routing_key = basic_deliver.routing_key
             logger.info(f"Received message with routing key: {routing_key}, type: {message_type}")
 
             if message_type in self.message_handlers:
                 message_class, handler, has_response = self.message_handlers[message_type]
                 try:
-                    constructor_args = {field.name: message_data.get(field.name) for field in fields(message_class)}
-                    message_obj = message_class(**constructor_args)
+                    message_obj = message_class.model_validate_json(body)
                     response = await handler(message_obj)
 
                     if has_response:
                         if response is not None:
                             response_routing_key = f"{routing_key.split('.')[0]}.{message_type}Response"
-                            await self.publish_message(
-                                exchange=self.exchange_name,
-                                routing_key=response_routing_key,
-                                message=response,
-                                message_type=f'{message_type}Response'
-                            )
+                            if isinstance(response, BaseModel):
+                                response_data = cast(dict, response.model_dump())
+                            elif isinstance(response, dict):
+                                response_data = response
+                            else:
+                                logger.error(
+                                    f"Handler for {message_type} returned an unsupported response type: {type(response)}")
+                                response_data = None
+                            if response_data is not None:
+                                await self.publish_message(
+                                    exchange=self.exchange_name,
+                                    routing_key=response_routing_key,
+                                    message=response_data,
+                                    message_type=f'{message_type}Response'
+                                )
                         else:
-                            logger.error(f"Handler for {message_type} was supposed to return a response but returned None.")
+                            logger.error(
+                                f"Handler for {message_type} was supposed to return a response but returned None.")
                     if self._channel:
                         self._channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
@@ -245,7 +243,13 @@ class RabbitMQClient:
             return
 
         try:
-            message_body = json.dumps(message).encode('utf-8')
+            if isinstance(message, BaseModel):
+                message_body = json.dumps(message.model_dump()).encode('utf-8')
+            elif isinstance(message, dict):
+                message_body = json.dumps(message).encode('utf-8')
+            else:
+                logger.error(f"Message to publish is not a dict or BaseModel: {type(message)}")
+                return
             properties = pika.BasicProperties(
                 delivery_mode=2,
                 content_type='application/json',
