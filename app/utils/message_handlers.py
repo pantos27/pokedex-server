@@ -1,12 +1,16 @@
 import logging
 from typing import Dict, Any
 from datetime import datetime
-from .rabbitmq_client import StatusCheckMessage, SaveUserCommand, message_handler
+
+from .message_router import MessageRouter
+from .rabbitmq_client import StatusCheckMessage, SaveUserCommand
 
 logger = logging.getLogger(__name__)
 
 
-@message_handler('StatusCheckMessage', StatusCheckMessage, has_response=True)
+router = MessageRouter()
+
+@router.message_handler('StatusCheckMessage', StatusCheckMessage, has_response=True)
 async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, Any]:
     """
     Handle status check messages and return a response
@@ -50,7 +54,7 @@ async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, 
         }
 
 
-@message_handler('SaveUserCommand', SaveUserCommand)
+@router.message_handler('SaveUserCommand', SaveUserCommand)
 async def handle_save_user_message(message: SaveUserCommand):
     """
     Handle save user command messages

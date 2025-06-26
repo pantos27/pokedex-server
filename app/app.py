@@ -10,6 +10,7 @@ from .repository import db, init_db
 from .api.pokemon_controller import api
 from .api.user_controller import user_api
 from .api.capture_controller import capture_api
+from utils.message_handlers import router as message_router
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,18 @@ def create_app(test: bool = False):
 
         # Initialize and run RabbitMQ service in a separate thread (only if not in test mode)
         if not test:
-            logger.info("xxx-boot",rabbitmq_client)
+            # Register all handlers from the message router
+            for message_type, message_class, func, has_response in message_router.handlers:
+                rabbitmq_client.register_handler(
+                    message_type=message_type,
+                    message_class=message_class,
+                    handler=func,
+                    has_response=has_response
+                )
+
             rabbitmq_thread = threading.Thread(target=run_rabbitmq_service, daemon=True,args=[rabbitmq_client])
             rabbitmq_thread.start()
             app.logger.info("RabbitMQ service started in a background thread")
+
 
     return app
