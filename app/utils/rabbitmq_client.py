@@ -93,7 +93,7 @@ class RabbitMQClient(RabbitMQService):
             asyncio.get_running_loop().call_exception_handler({"message": "Failed to reconnect msg"})
 
     def on_connection_open(self, connection: AsyncioConnection):
-        logger.info('Connection opened')
+        logger.debug('Connection opened')
         self.reconnect_attempts = 0
         self._connection = connection
         # Open consume channel first, then publish channel
@@ -113,7 +113,7 @@ class RabbitMQClient(RabbitMQService):
             asyncio.get_running_loop().create_task(self.reconnect())
 
     def on_consume_channel_open(self, channel: Channel):
-        logger.info('Consume channel opened')
+        logger.debug('Consume channel opened')
         self._consume_channel = channel
         if self._consume_channel:
             self._consume_channel.exchange_declare(
@@ -127,11 +127,11 @@ class RabbitMQClient(RabbitMQService):
             self._connection.channel(on_open_callback=self.on_publish_channel_open)
 
     def on_publish_channel_open(self, channel: Channel):
-        logger.info('Publish channel opened')
+        logger.debug('Publish channel opened')
         self._publish_channel = channel
 
     def on_exchange_declared(self, frame):
-        logger.info('Exchange declared')
+        logger.debug('Exchange declared')
         if self._consume_channel:
             self._consume_channel.queue_declare(
                 queue=self.queue_name,
@@ -140,7 +140,7 @@ class RabbitMQClient(RabbitMQService):
             )
 
     def on_queue_declared(self, frame):
-        logger.info('Queue declared, creating bindings to exchange')
+        logger.debug('Queue declared, creating bindings to exchange')
         if not self.message_handlers:
             logger.exception("No message handlers registered.")
             raise InvalidStateError("No message handlers registered.")
@@ -148,7 +148,7 @@ class RabbitMQClient(RabbitMQService):
             routing_keys = [f"*.{message_type}" for message_type in self.message_handlers.keys()]
             self._pending_binds_set = set(routing_keys)
             for routing_key in routing_keys:
-                logger.info(
+                logger.debug(
                     f"Binding queue {self.queue_name} to exchange {self.exchange_name} with routing key {routing_key}")
                 if self._consume_channel:
                     self._consume_channel.queue_bind(
@@ -159,7 +159,7 @@ class RabbitMQClient(RabbitMQService):
                     )
 
     def on_bind_ok(self, _, routing_key):
-        logger.info(f'Queue bound for routing key: {routing_key}')
+        logger.debug(f'Queue bound for routing key: {routing_key}')
         self._pending_binds_set.discard(routing_key)
         if not self._pending_binds_set:
             self.start_consuming()
@@ -187,20 +187,20 @@ class RabbitMQClient(RabbitMQService):
             self._consumer_tag = None
 
     def on_cancel_ok(self, frame):
-        logger.info('Consumer cancelled')
+        logger.debug('Consumer cancelled')
         self._consumer_tag = None
         self.close_consume_channel()
 
     def close_consume_channel(self):
         if self._consume_channel:
-            logger.info('Closing the consume channel')
+            logger.debug('Closing the consume channel')
             self._consume_channel.close()
             self._consume_channel = None
             self._consumer_tag = None
 
     def close_publish_channel(self):
         if self._publish_channel:
-            logger.info('Closing the publish channel')
+            logger.debug('Closing the publish channel')
             self._publish_channel.close()
             self._publish_channel = None
 
@@ -308,7 +308,6 @@ rabbitmq_client = RabbitMQClient()
 def message_handler(message_type: str, message_class: Type[BaseModel], has_response: bool = False):
     """Decorator to register a function as a message handler."""
     def decorator(func):
-        logger.info("xxx-dec",rabbitmq_client)
         rabbitmq_client.register_handler(
             message_type=message_type,
             message_class=message_class,

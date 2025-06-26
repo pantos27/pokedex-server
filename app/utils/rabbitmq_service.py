@@ -13,11 +13,7 @@ class RabbitMQService(ABC):
         """Initialize RabbitMQ connection and set up message handlers"""
         pass
 
-    async def start_consuming(self):
-        """Start consuming messages"""
-        pass
-
-    async def stop_consuming(self):
+    async def close(self):
         """Stop consuming messages"""
         pass
 
@@ -31,6 +27,5 @@ class RabbitMQService(ABC):
         pass
 
 
-# Global RabbitMQ service instance
-# rabbitmq_service: RabbitMQService = rabbitmq_client
+
 
