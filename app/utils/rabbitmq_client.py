@@ -1,12 +1,15 @@
 import asyncio
 import json
 import logging
+from asyncio import InvalidStateError
 from typing import Callable, Dict, Any, Tuple, Type, Optional, cast
 
 import pika
 from pydantic import BaseModel
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
+
+from utils.rabbitmq_service import RabbitMQService
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ class SaveUserCommand(BaseModel):
     timestamp: str
 
 
-class RabbitMQClient:
+class RabbitMQClient(RabbitMQService):
     """RabbitMQ client for handling message consumption and publishing"""
 
     def __init__(self, host='localhost', port=5672, username='guest', password='guest'):
@@ -36,7 +39,8 @@ class RabbitMQClient:
         self.username = username
         self.password = password
         self._connection: Optional[AsyncioConnection] = None
-        self._channel: Optional[Channel] = None
+        self._consume_channel: Optional[Channel] = None
+        self._publish_channel: Optional[Channel] = None
         self._closing = False
         self._consumer_tag = None
 
@@ -92,7 +96,8 @@ class RabbitMQClient:
         logger.info('Connection opened')
         self.reconnect_attempts = 0
         self._connection = connection
-        self._connection.channel(on_open_callback=self.on_channel_open)
+        # Open consume channel first, then publish channel
+        self._connection.channel(on_open_callback=self.on_consume_channel_open)
 
     def on_connection_open_error(self, connection: AsyncioConnection, err):
         logger.error(f'Connection open failed: {err}')
@@ -101,89 +106,102 @@ class RabbitMQClient:
     def on_connection_closed(self, connection: AsyncioConnection, reason):
         logger.warning(f'Connection closed: {reason}')
         self._connection = None
-        self._channel = None
+        self._consume_channel = None
+        self._publish_channel = None
         if not self._closing:
             asyncio.get_running_loop().create_task(self.reconnect())
 
-    def on_channel_open(self, channel: Channel):
-        logger.info('Channel opened')
-        self._channel = channel
-        if self._channel:
-            self._channel.exchange_declare(
+    def on_consume_channel_open(self, channel: Channel):
+        logger.info('Consume channel opened')
+        self._consume_channel = channel
+        if self._consume_channel:
+            self._consume_channel.exchange_declare(
                 exchange=self.exchange_name,
                 exchange_type='topic',
                 durable=True,
                 callback=self.on_exchange_declared
             )
+        # Open publish channel in parallel, only if connection exists
+        if self._connection:
+            self._connection.channel(on_open_callback=self.on_publish_channel_open)
+
+    def on_publish_channel_open(self, channel: Channel):
+        logger.info('Publish channel opened')
+        self._publish_channel = channel
 
     def on_exchange_declared(self, frame):
         logger.info('Exchange declared')
-        if self._channel:
-            self._channel.queue_declare(
+        if self._consume_channel:
+            self._consume_channel.queue_declare(
                 queue=self.queue_name,
                 durable=True,
                 callback=self.on_queue_declared
             )
 
     def on_queue_declared(self, frame):
-        logger.info('Queue declared')
+        logger.info('Queue declared, creating bindings to exchange')
         if not self.message_handlers:
-            logger.warning("No message handlers registered. Binding queue with '#' to receive all messages.")
-            routing_key = '#'
-            if self._channel:
-                self._channel.queue_bind(
-                    self.queue_name,
-                    self.exchange_name,
-                    routing_key=routing_key,
-                    callback=self.on_bindok
-                )
+            logger.exception("No message handlers registered.")
+            raise InvalidStateError("No message handlers registered.")
         else:
             for message_type in self.message_handlers.keys():
                 routing_key = f"*.{message_type}"
                 logger.info(
                     f"Binding queue {self.queue_name} to exchange {self.exchange_name} with routing key {routing_key}")
-                if self._channel:
-                    self._channel.queue_bind(
+                if self._consume_channel:
+                    self._consume_channel.queue_bind(
                         self.queue_name,
                         self.exchange_name,
                         routing_key=routing_key,
-                        callback=self.on_bindok
+                        callback=self.on_bind_ok
                     )
+                #todo: wait for all binds to proceed
 
-    def on_bindok(self, _):
+    def on_bind_ok(self, _):
         logger.info('Queue bound')
-        self._start_consuming()
+        self.start_consuming()
 
-    def _start_consuming(self):
+    def start_consuming(self):
         if self._consumer_tag:
             return
         logger.info("Starting consumer")
-        if self._channel:
-            self._channel.basic_qos(prefetch_count=1)
+        if self._consume_channel:
+            self._consume_channel.basic_qos(prefetch_count=1)
 
             def on_message_wrapper(channel, basic_deliver, properties, body):
                 asyncio.get_running_loop().create_task(
                     self.on_message(channel, basic_deliver, properties, body)
                 )
 
-            self._consumer_tag = self._channel.basic_consume(
+            self._consumer_tag = self._consume_channel.basic_consume(
                 self.queue_name, on_message_wrapper
             )
 
     async def stop_consuming(self):
-        if self._consumer_tag and self._channel:
+        if self._consumer_tag and self._consume_channel:
             logger.info("Stopping consumer")
-            self._channel.basic_cancel(self._consumer_tag, self.on_cancelok)
+            self._consume_channel.basic_cancel(self._consumer_tag, self.on_cancel_ok)
             self._consumer_tag = None
 
-    def on_cancelok(self, frame):
+    def on_cancel_ok(self, frame):
         logger.info('Consumer cancelled')
-        self.close_channel()
+        self.close_consume_channel()
+
+    def close_consume_channel(self):
+        if self._consume_channel:
+            logger.info('Closing the consume channel')
+            self._consume_channel.close()
+            self._consume_channel = None
+
+    def close_publish_channel(self):
+        if self._publish_channel:
+            logger.info('Closing the publish channel')
+            self._publish_channel.close()
+            self._publish_channel = None
 
     async def on_message(self, channel, basic_deliver, properties, body):
         message_type = properties.headers.get('__TypeId__')
         try:
-            # message_data = json.loads(body.decode('utf-8'))
             routing_key = basic_deliver.routing_key
             logger.info(f"Received message with routing key: {routing_key}, type: {message_type}")
 
@@ -214,32 +232,32 @@ class RabbitMQClient:
                         else:
                             logger.error(
                                 f"Handler for {message_type} was supposed to return a response but returned None.")
-                    if self._channel:
-                        self._channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+                    if self._consume_channel:
+                        self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
                 except Exception as e:
                     logger.error(f"Error processing message type {message_type}: {e}. Re-queueing message.")
-                    if self._channel:
-                        self._channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
+                    if self._consume_channel:
+                        self._consume_channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
                     raise
             else:
                 logger.warning(f"Unknown message type: {message_type}")
-                if self._channel:
-                    self._channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+                if self._consume_channel:
+                    self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode message with type {message_type}: {e}. Discarding message.")
-            if self._channel:
-                self._channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+            if self._consume_channel:
+                self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
         except Exception as e:
             logger.error(f"Unexpected error in on_message for type {message_type}: {e}")
-            if self._channel:
-                self._channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
+            if self._consume_channel:
+                self._consume_channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
             raise
 
     async def publish_message(self, exchange: str, routing_key: str, message: Dict[str, Any], message_type: str = ''):
-        if not self._channel or not self._channel.is_open:
-            logger.error("Cannot publish message, channel is not available.")
+        if not self._publish_channel or not self._publish_channel.is_open:
+            logger.error("Cannot publish message, publish channel is not available.")
             return
 
         try:
@@ -255,8 +273,8 @@ class RabbitMQClient:
                 content_type='application/json',
                 headers={'__TypeId__': message_type} if message_type else {}
             )
-            if self._channel:
-                self._channel.basic_publish(
+            if self._publish_channel:
+                self._publish_channel.basic_publish(
                     exchange=exchange,
                     routing_key=routing_key,
                     body=message_body,
@@ -267,9 +285,8 @@ class RabbitMQClient:
             logger.error(f"Failed to publish message: {e}")
 
     def close_channel(self):
-        if self._channel:
-            logger.info('Closing the channel')
-            self._channel.close()
+        self.close_consume_channel()
+        self.close_publish_channel()
 
     async def close(self):
         if not self._closing:
@@ -286,6 +303,7 @@ rabbitmq_client = RabbitMQClient()
 def message_handler(message_type: str, message_class: Type[BaseModel], has_response: bool = False):
     """Decorator to register a function as a message handler."""
     def decorator(func):
+        logger.info("xxx-dec",rabbitmq_client)
         rabbitmq_client.register_handler(
             message_type=message_type,
             message_class=message_class,

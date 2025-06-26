@@ -1,26 +1,32 @@
 import asyncio
+import logging
 import threading
 
 from flask import Flask
 
+from utils.rabbitmq_client import rabbitmq_client
+from utils.rabbitmq_service import RabbitMQService
 from .repository import db, init_db
 from .api.pokemon_controller import api
 from .api.user_controller import user_api
 from .api.capture_controller import capture_api
-from .utils.rabbitmq_service import rabbitmq_service
 
+logger = logging.getLogger(__name__)
 
-def run_rabbitmq_service():
+def run_rabbitmq_service(rabbitmq_service: RabbitMQService):
     """Run the RabbitMQ service in a separate thread with its own event loop"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    async def start_service():
-        if await rabbitmq_service.initialize():
-            await rabbitmq_service.start_consuming()
+    async def start_service(_rabbitmq_service: RabbitMQService):
+        # if await rabbitmq_service.connect():
+        #     await rabbitmq_service.start_consuming()
+        await _rabbitmq_service.connect()
 
-    loop.run_until_complete(start_service())
+    loop.run_until_complete(start_service(rabbitmq_service))
+    loop.set_exception_handler(lambda  _, context: logger.info(f"Loop exception handler {context}"))
     loop.run_forever()
+    logger.info("forever_stopper")
 
 
 def create_app(test: bool = False):
@@ -47,7 +53,8 @@ def create_app(test: bool = False):
 
         # Initialize and run RabbitMQ service in a separate thread (only if not in test mode)
         if not test:
-            rabbitmq_thread = threading.Thread(target=run_rabbitmq_service, daemon=True)
+            logger.info("xxx-boot",rabbitmq_client)
+            rabbitmq_thread = threading.Thread(target=run_rabbitmq_service, daemon=True,args=[rabbitmq_client])
             rabbitmq_thread.start()
             app.logger.info("RabbitMQ service started in a background thread")
 
