@@ -2,6 +2,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Type, Callable
 
+from utils.message_handlers import Message
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,12 +19,12 @@ class RabbitMQService(ABC):
         """Stop consuming messages"""
         pass
 
-    def register_handler(self, message_type: str, message_class: Type, handler: Callable, has_response: bool = False):
+    def register_handler(self, message_class: Type[Message], handler: Callable, has_response: bool = False):
         """Register a handler for a specific message type"""
         pass
 
 
-    async def publish_save_user_command(self, user_id: str, user_name: str, email: str):
+    async def publish_message(self, user_id: str, user_name: str, email: str):
         """Publish a save user command"""
         pass
 

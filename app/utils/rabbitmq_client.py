@@ -9,24 +9,10 @@ from pydantic import BaseModel
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
 
+from utils.message_handlers import Message
 from utils.rabbitmq_service import RabbitMQService
 
 logger = logging.getLogger(__name__)
-
-
-class StatusCheckMessage(BaseModel):
-    """Status check message structure"""
-    timestamp: str
-    request_id: int
-    source: str
-
-
-class SaveUserCommand(BaseModel):
-    """Save user command message structure"""
-    user_id: str
-    user_name: str
-    email: str
-    timestamp: str
 
 
 class RabbitMQClient(RabbitMQService):
@@ -49,13 +35,11 @@ class RabbitMQClient(RabbitMQService):
         self.queue_name = 'master-queue'
 
         # Message handlers
-        self.message_handlers: Dict[str, Tuple[Type[BaseModel], Callable, bool]] = {}
+        self.message_handlers: Dict[str, Tuple[Type[Message], Callable, bool]] = {}
 
-    def register_handler(self, message_type: str, message_class: Type, handler: Callable, has_response: bool = False):
+    def register_handler(self, message_class: Type[Message], handler: Callable, has_response: bool = False):
         """Register a handler for a specific message type"""
-        if not issubclass(message_class, BaseModel):
-            raise TypeError("message_class must inherit from pydantic BaseModel")
-        self.message_handlers[message_type] = (message_class, handler, has_response)
+        self.message_handlers[message_class.type_id] = (message_class, handler, has_response)
 
     def _get_credentials(self):
         return pika.PlainCredentials(self.username, self.password)
@@ -145,7 +129,8 @@ class RabbitMQClient(RabbitMQService):
             logger.exception("No message handlers registered.")
             raise InvalidStateError("No message handlers registered.")
         else:
-            routing_keys = [f"*.{message_type}" for message_type in self.message_handlers.keys()]
+            routing_keys = [f"*.{message_class.get_message_type_from_type()}" for message_class, _, _ in
+                            self.message_handlers.values()]
             self._pending_binds_set = set(routing_keys)
             for routing_key in routing_keys:
                 logger.debug(
@@ -216,27 +201,23 @@ class RabbitMQClient(RabbitMQService):
                     message_obj = message_class.model_validate_json(body)
                     response = await handler(message_obj)
 
-                    if has_response:
-                        if response is not None:
-                            response_routing_key = f"{routing_key.split('.')[0]}.{message_type}Response"
-                            if isinstance(response, BaseModel):
-                                response_data = cast(dict, response.model_dump())
-                            elif isinstance(response, dict):
-                                response_data = response
-                            else:
-                                logger.error(
-                                    f"Handler for {message_type} returned an unsupported response type: {type(response)}")
-                                response_data = None
-                            if response_data is not None:
-                                await self.publish_message(
-                                    exchange=self.exchange_name,
-                                    routing_key=response_routing_key,
-                                    message=response_data,
-                                    message_type=f'{message_type}Response'
-                                )
+                    if response is not None:
+                        response_routing_key = f"{routing_key.split('.')[0]}.{message_type}Response"
+                        if isinstance(response, BaseModel):
+                            response_data = cast(dict, response.model_dump())
+                        elif isinstance(response, dict):
+                            response_data = response
                         else:
                             logger.error(
-                                f"Handler for {message_type} was supposed to return a response but returned None.")
+                                f"Handler for {message_type} returned an unsupported response type: {type(response)}")
+                            response_data = None
+                        if response_data is not None:
+                            await self.publish_message(
+                                exchange=self.exchange_name,
+                                routing_key=response_routing_key,
+                                message=response_data,
+                                message_type=f'{message_type}Response'
+                            )
                     if self._consume_channel:
                         self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
@@ -303,16 +284,3 @@ class RabbitMQClient(RabbitMQService):
 
 
 rabbitmq_client = RabbitMQClient()
-
-# Decorator for message handler registration
-def message_handler(message_type: str, message_class: Type[BaseModel], has_response: bool = False):
-    """Decorator to register a function as a message handler."""
-    def decorator(func):
-        rabbitmq_client.register_handler(
-            message_type=message_type,
-            message_class=message_class,
-            handler=func,
-            has_response=has_response
-        )
-        return func
-    return decorator

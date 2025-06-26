@@ -1,16 +1,53 @@
 import logging
-from typing import Dict, Any
-from datetime import datetime
+import uuid
+from typing import Dict, Any, ClassVar
+import datetime
+
+from pydantic import BaseModel, Field
 
 from .message_router import MessageRouter
-from .rabbitmq_client import StatusCheckMessage, SaveUserCommand
 
 logger = logging.getLogger(__name__)
 
 
+generate_uuid = lambda: str(uuid.uuid4())
+get_now = lambda : datetime.datetime.now(datetime.UTC)
+
+
+class Message(BaseModel):
+    type_id: ClassVar[str]
+
+    @classmethod
+    def get_message_type_from_type(cls) -> str:
+        return cls.type_id.split('.')[-1]
+
+    messageType: str = "some message type"
+    messageId: str = Field(default_factory=generate_uuid)
+    timestamp: datetime.datetime = Field(default_factory=get_now)
+    correlationId: str = Field(default_factory=generate_uuid)
+
+
+class StatusCheckMessage(Message):
+    """Status check message structure"""
+    type_id = 'com.dropit.StatusCheckMessage'
+    timestamp: str
+    request_id: int
+    source: str
+
+
+class SaveUserCommand(Message):
+    """Save user command message structure"""
+    type_id = 'com.dropit.SaveUserCommand'
+    user_id: str
+    user_name: str
+    email: str
+    timestamp: str
+
+
+
 router = MessageRouter()
 
-@router.message_handler('StatusCheckMessage', StatusCheckMessage, has_response=True)
+@router.message_handler(StatusCheckMessage, has_response=True)
 async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, Any]:
     """
     Handle status check messages and return a response
@@ -31,7 +68,7 @@ async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, 
             'status': 'healthy',
             'request_id': message.request_id,
             'source': message.source,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.datetime.now().isoformat(),
             'services': {
                 'database': 'connected',
                 'api': 'running',
@@ -49,12 +86,12 @@ async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, 
             'status': 'error',
             'request_id': message.request_id,
             'source': message.source,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.datetime.now().isoformat(),
             'error': str(e)
         }
 
 
-@router.message_handler('SaveUserCommand', SaveUserCommand)
+@router.message_handler(SaveUserCommand)
 async def handle_save_user_message(message: SaveUserCommand):
     """
     Handle save user command messages

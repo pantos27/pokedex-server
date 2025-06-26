@@ -55,9 +55,8 @@ def create_app(test: bool = False):
         # Initialize and run RabbitMQ service in a separate thread (only if not in test mode)
         if not test:
             # Register all handlers from the message router
-            for message_type, message_class, func, has_response in message_router.handlers:
+            for message_class, func, has_response in message_router.handlers:
                 rabbitmq_client.register_handler(
-                    message_type=message_type,
                     message_class=message_class,
                     handler=func,
                     has_response=has_response
