@@ -18,7 +18,7 @@ class StatusCheckMessage(BaseModel):
     """Status check message structure"""
     timestamp: str
     request_id: int
-    source: int
+    source: str
 
 
 class SaveUserCommand(BaseModel):
@@ -108,6 +108,7 @@ class RabbitMQClient(RabbitMQService):
         self._connection = None
         self._consume_channel = None
         self._publish_channel = None
+        self._consumer_tag = None
         if not self._closing:
             asyncio.get_running_loop().create_task(self.reconnect())
 
@@ -144,8 +145,9 @@ class RabbitMQClient(RabbitMQService):
             logger.exception("No message handlers registered.")
             raise InvalidStateError("No message handlers registered.")
         else:
-            for message_type in self.message_handlers.keys():
-                routing_key = f"*.{message_type}"
+            routing_keys = [f"*.{message_type}" for message_type in self.message_handlers.keys()]
+            self._pending_binds_set = set(routing_keys)
+            for routing_key in routing_keys:
                 logger.info(
                     f"Binding queue {self.queue_name} to exchange {self.exchange_name} with routing key {routing_key}")
                 if self._consume_channel:
@@ -153,13 +155,14 @@ class RabbitMQClient(RabbitMQService):
                         self.queue_name,
                         self.exchange_name,
                         routing_key=routing_key,
-                        callback=self.on_bind_ok
+                        callback=lambda frame, rk=routing_key: self.on_bind_ok(frame, rk)
                     )
-                #todo: wait for all binds to proceed
 
-    def on_bind_ok(self, _):
-        logger.info('Queue bound')
-        self.start_consuming()
+    def on_bind_ok(self, _, routing_key):
+        logger.info(f'Queue bound for routing key: {routing_key}')
+        self._pending_binds_set.discard(routing_key)
+        if not self._pending_binds_set:
+            self.start_consuming()
 
     def start_consuming(self):
         if self._consumer_tag:
@@ -185,6 +188,7 @@ class RabbitMQClient(RabbitMQService):
 
     def on_cancel_ok(self, frame):
         logger.info('Consumer cancelled')
+        self._consumer_tag = None
         self.close_consume_channel()
 
     def close_consume_channel(self):
@@ -192,6 +196,7 @@ class RabbitMQClient(RabbitMQService):
             logger.info('Closing the consume channel')
             self._consume_channel.close()
             self._consume_channel = None
+            self._consumer_tag = None
 
     def close_publish_channel(self):
         if self._publish_channel:
