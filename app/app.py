@@ -1,9 +1,34 @@
+import asyncio
+import logging
+import threading
+
 from flask import Flask
 
+from .utils.rabbitmq_client import rabbitmq_client
+from .utils.mock_rabbitmq_client import MockRabbitMQClient
+from .utils.rabbitmq_service import RabbitMQService
 from .repository import db, init_db
 from .api.pokemon_controller import api
 from .api.user_controller import user_api
 from .api.capture_controller import capture_api
+from .utils.message_handlers import router as message_router
+
+logger = logging.getLogger(__name__)
+
+def run_rabbitmq_service(rabbitmq_service: RabbitMQService):
+    """Run the RabbitMQ service in a separate thread with its own event loop"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def start_service(_rabbitmq_service: RabbitMQService):
+        # if await rabbitmq_service.connect():
+        #     await rabbitmq_service.start_consuming()
+        await _rabbitmq_service.connect()
+
+    loop.run_until_complete(start_service(rabbitmq_service))
+    loop.set_exception_handler(lambda  _, context: logger.info(f"Loop exception handler {context}"))
+    loop.run_forever()
+    logger.info("forever_stopper")
 
 
 def create_app(test: bool = False):
@@ -27,5 +52,32 @@ def create_app(test: bool = False):
     # Initialize the database
     with app.app_context():
         init_db()
+
+        # Initialize and run RabbitMQ service in a separate thread (only if not in test mode)
+        if not test:
+            # Register all handlers from the message router
+            for message_class, handler in message_router.handlers:
+                rabbitmq_client.register_handler(
+                    message_class=message_class,
+                    handler=handler,
+                )
+
+            rabbitmq_thread = threading.Thread(target=run_rabbitmq_service, daemon=True,args=[rabbitmq_client])
+            rabbitmq_thread.start()
+            app.logger.info("RabbitMQ service started in a background thread")
+        else:
+            # Use mock RabbitMQ client for testing
+            mock_client = MockRabbitMQClient()
+
+            # Register all handlers from the message router
+            for message_class, handler in message_router.handlers:
+                mock_client.register_handler(
+                    message_class=message_class,
+                    handler=handler,
+                )
+
+            # Store the mock client in app config for test access
+            app.config['RABBITMQ_CLIENT'] = mock_client
+            app.logger.info("Mock RabbitMQ client initialized for testing")
 
     return app
