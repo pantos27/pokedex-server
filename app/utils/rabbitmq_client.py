@@ -2,15 +2,14 @@ import asyncio
 import json
 import logging
 from asyncio import InvalidStateError
-from typing import Callable, Dict, Any, Tuple, Type, Optional, cast
+from typing import Dict, Tuple, Type, Optional
 
 import pika
-from pydantic import BaseModel
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
 
-from utils.message_handlers import Message
-from utils.rabbitmq_service import RabbitMQService
+from utils.message import Message
+from utils.rabbitmq_service import RabbitMQService, MessageHandler, MessageSubType
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ class RabbitMQClient(RabbitMQService):
     """RabbitMQ client for handling message consumption and publishing"""
 
     def __init__(self, host='localhost', port=5672, username='guest', password='guest'):
+        self._pending_binds_set = set()
         self.reconnect_attempts = 0
         self.host = host
         self.port = port
@@ -35,11 +35,11 @@ class RabbitMQClient(RabbitMQService):
         self.queue_name = 'master-queue'
 
         # Message handlers
-        self.message_handlers: Dict[str, Tuple[Type[Message], Callable, bool]] = {}
+        self.message_handlers: Dict[str, Tuple[Type[MessageSubType], MessageHandler]] = {}
 
-    def register_handler(self, message_class: Type[Message], handler: Callable, has_response: bool = False):
+    def register_handler(self, message_class: Type[MessageSubType], handler: MessageHandler):
         """Register a handler for a specific message type"""
-        self.message_handlers[message_class.type_id] = (message_class, handler, has_response)
+        self.message_handlers[message_class.type_id] = (message_class, handler)
 
     def _get_credentials(self):
         return pika.PlainCredentials(self.username, self.password)
@@ -129,7 +129,7 @@ class RabbitMQClient(RabbitMQService):
             logger.exception("No message handlers registered.")
             raise InvalidStateError("No message handlers registered.")
         else:
-            routing_keys = [f"*.{message_class.get_message_type_from_type()}" for message_class, _, _ in
+            routing_keys = [f"*.{message_class.get_message_type_from_type()}" for message_class, _ in
                             self.message_handlers.values()]
             self._pending_binds_set = set(routing_keys)
             for routing_key in routing_keys:
@@ -140,7 +140,7 @@ class RabbitMQClient(RabbitMQService):
                         self.queue_name,
                         self.exchange_name,
                         routing_key=routing_key,
-                        callback=lambda frame, rk=routing_key: self.on_bind_ok(frame, rk)
+                        callback=lambda _frame, rk=routing_key: self.on_bind_ok(_frame, rk)
                     )
 
     def on_bind_ok(self, _, routing_key):
@@ -196,28 +196,16 @@ class RabbitMQClient(RabbitMQService):
             logger.info(f"Received message with routing key: {routing_key}, type: {message_type}")
 
             if message_type in self.message_handlers:
-                message_class, handler, has_response = self.message_handlers[message_type]
+                message_class, handler = self.message_handlers[message_type]
                 try:
                     message_obj = message_class.model_validate_json(body)
                     response = await handler(message_obj)
 
                     if response is not None:
-                        response_routing_key = f"{routing_key.split('.')[0]}.{message_type}Response"
-                        if isinstance(response, BaseModel):
-                            response_data = cast(dict, response.model_dump())
-                        elif isinstance(response, dict):
-                            response_data = response
+                        if isinstance(response, Message):
+                            await self.publish_message(message=response)
                         else:
-                            logger.error(
-                                f"Handler for {message_type} returned an unsupported response type: {type(response)}")
-                            response_data = None
-                        if response_data is not None:
-                            await self.publish_message(
-                                exchange=self.exchange_name,
-                                routing_key=response_routing_key,
-                                message=response_data,
-                                message_type=f'{message_type}Response'
-                            )
+                            raise RuntimeError(f"Handler for {message_type} returned an unsupported response type: {type(response)}")
                     if self._consume_channel:
                         self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
@@ -241,32 +229,27 @@ class RabbitMQClient(RabbitMQService):
                 self._consume_channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
             raise
 
-    async def publish_message(self, exchange: str, routing_key: str, message: Dict[str, Any], message_type: str = ''):
+    async def publish_message(self, message: Message, shard: str = '*'):
         if not self._publish_channel or not self._publish_channel.is_open:
             logger.error("Cannot publish message, publish channel is not available.")
             return
 
         try:
-            if isinstance(message, BaseModel):
-                message_body = json.dumps(message.model_dump()).encode('utf-8')
-            elif isinstance(message, dict):
-                message_body = json.dumps(message).encode('utf-8')
-            else:
-                logger.error(f"Message to publish is not a dict or BaseModel: {type(message)}")
-                return
+            message_body = json.dumps(message.model_dump()).encode('utf-8')
+            routing_key = f"Shard={shard}.{message.get_message_type_from_type()}"
             properties = pika.BasicProperties(
                 delivery_mode=2,
                 content_type='application/json',
-                headers={'__TypeId__': message_type} if message_type else {}
+                headers={'__TypeId__': message.type_id}
             )
             if self._publish_channel:
                 self._publish_channel.basic_publish(
-                    exchange=exchange,
+                    exchange=self.exchange_name,
                     routing_key=routing_key,
                     body=message_body,
                     properties=properties
                 )
-            logger.info(f"Published message to {exchange} with routing key: {routing_key}, type: {message_type}")
+            logger.info(f"Published {message.type_id} with routing key: {routing_key}")
         except Exception as e:
             logger.error(f"Failed to publish message: {e}")
 

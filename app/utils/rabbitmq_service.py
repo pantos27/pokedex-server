@@ -1,11 +1,13 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Type, Callable
+from typing import Type, Callable, Awaitable, Optional, NewType
 
-from utils.message_handlers import Message
+from utils.message import Message
 
 logger = logging.getLogger(__name__)
 
+MessageSubType = NewType("MessageSubType", Message)
+type MessageHandler = Callable[[MessageSubType], Awaitable[Optional[Message]]]
 
 class RabbitMQService(ABC):
     """Service class for managing RabbitMQ connection and message handling"""
@@ -19,15 +21,11 @@ class RabbitMQService(ABC):
         """Stop consuming messages"""
         pass
 
-    def register_handler(self, message_class: Type[Message], handler: Callable, has_response: bool = False):
+    def register_handler(self, message_class: Type[MessageSubType],
+                         handler: MessageHandler):
         """Register a handler for a specific message type"""
         pass
 
-
-    async def publish_message(self, user_id: str, user_name: str, email: str):
+    async def publish_message(self, message: Message, shard: str = '*'):
         """Publish a save user command"""
         pass
-
-
-
-

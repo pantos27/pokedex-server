@@ -1,30 +1,9 @@
 import logging
-import uuid
-from typing import Dict, Any, ClassVar
-import datetime
 
-from pydantic import BaseModel, Field
-
+from .message import Message
 from .message_router import MessageRouter
 
 logger = logging.getLogger(__name__)
-
-
-generate_uuid = lambda: str(uuid.uuid4())
-get_now = lambda : datetime.datetime.now(datetime.UTC)
-
-
-class Message(BaseModel):
-    type_id: ClassVar[str]
-
-    @classmethod
-    def get_message_type_from_type(cls) -> str:
-        return cls.type_id.split('.')[-1]
-
-    messageType: str = "some message type"
-    messageId: str = Field(default_factory=generate_uuid)
-    timestamp: datetime.datetime = Field(default_factory=get_now)
-    correlationId: str = Field(default_factory=generate_uuid)
 
 
 class StatusCheckMessage(Message):
@@ -33,6 +12,10 @@ class StatusCheckMessage(Message):
     timestamp: str
     request_id: int
     source: str
+
+class StatusCheckReply(Message):
+    type_id = 'com.dropit.StatusCheckReply'
+    status: str
 
 
 class SaveUserCommand(Message):
@@ -47,8 +30,8 @@ class SaveUserCommand(Message):
 
 router = MessageRouter()
 
-@router.message_handler(StatusCheckMessage, has_response=True)
-async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, Any]:
+@router.message_handler(StatusCheckMessage)
+async def handle_status_check_message(message: StatusCheckMessage) -> StatusCheckReply:
     """
     Handle status check messages and return a response
 
@@ -64,31 +47,14 @@ async def handle_status_check_message(message: StatusCheckMessage) -> Dict[str, 
         # Perform status check logic here
         # This could include checking database connectivity, external services, etc.
 
-        response = {
-            'status': 'healthy',
-            'request_id': message.request_id,
-            'source': message.source,
-            'timestamp': datetime.datetime.now().isoformat(),
-            'services': {
-                'database': 'connected',
-                'api': 'running',
-                'rabbitmq': 'connected'
-            },
-            'version': '1.0.0'
-        }
+        response = StatusCheckReply(status="OK")
 
         logger.info(f"Status check completed for request_id: {message.request_id}")
         return response
 
     except Exception as e:
         logger.error(f"Error during status check: {e}")
-        return {
-            'status': 'error',
-            'request_id': message.request_id,
-            'source': message.source,
-            'timestamp': datetime.datetime.now().isoformat(),
-            'error': str(e)
-        }
+        return StatusCheckReply(status=e.__str__())
 
 
 @router.message_handler(SaveUserCommand)
