@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Type, Callable, Awaitable, Optional, NewType
 
-from utils.message import Message
+from app.utils.message import Message
 
 logger = logging.getLogger(__name__)
 

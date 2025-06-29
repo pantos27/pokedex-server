@@ -8,8 +8,8 @@ import pika
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
 
-from utils.message import Message
-from utils.rabbitmq_service import RabbitMQService, MessageHandler, MessageSubType
+from app.utils.message import Message
+from app.utils.rabbitmq_service import RabbitMQService, MessageHandler, MessageSubType
 
 logger = logging.getLogger(__name__)
 
@@ -197,73 +197,68 @@ class RabbitMQClient(RabbitMQService):
 
             if message_type in self.message_handlers:
                 message_class, handler = self.message_handlers[message_type]
-                try:
-                    message_obj = message_class.model_validate_json(body)
-                    response = await handler(message_obj)
 
-                    if response is not None:
-                        if isinstance(response, Message):
-                            await self.publish_message(message=response)
-                        else:
-                            raise RuntimeError(f"Handler for {message_type} returned an unsupported response type: {type(response)}")
-                    if self._consume_channel:
-                        self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+                message = message_class.model_validate_json(body.decode('utf-8'))
 
-                except Exception as e:
-                    logger.error(f"Error processing message type {message_type}: {e}. Re-queueing message.")
-                    if self._consume_channel:
-                        self._consume_channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
-                    raise
+                result = await handler(message)  # type: ignore
+
+                channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+
+                # If the handler returns a response message, publish it
+                if result:
+                    await self.publish_message(result)
+
             else:
-                logger.warning(f"Unknown message type: {message_type}")
-                if self._consume_channel:
-                    self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
+                logger.warning(f"consumed bus message [{message_type}] from queue [{self.queue_name}] which is not in the subscription list")
+                # Reject the message and don't requeue it
+                channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode message with type {message_type}: {e}. Discarding message.")
-            if self._consume_channel:
-                self._consume_channel.basic_ack(delivery_tag=basic_deliver.delivery_tag)
         except Exception as e:
-            logger.error(f"Unexpected error in on_message for type {message_type}: {e}")
-            if self._consume_channel:
-                self._consume_channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
+            logger.error(f"Error processing message: {e}")
+            # Reject the message and requeue it
+            channel.basic_nack(delivery_tag=basic_deliver.delivery_tag, requeue=True)
             raise
 
     async def publish_message(self, message: Message, shard: str = '*'):
+        """Publish a message to RabbitMQ"""
         if not self._publish_channel or not self._publish_channel.is_open:
-            logger.error("Cannot publish message, publish channel is not available.")
+            logger.error("Publish channel not available")
             return
 
         try:
+            routing_key = f"{shard}.{message.__class__.get_message_type_from_type()}"
             message_body = json.dumps(message.model_dump()).encode('utf-8')
-            routing_key = f"Shard={shard}.{message.get_message_type_from_type()}"
+
             properties = pika.BasicProperties(
-                delivery_mode=2,
                 content_type='application/json',
-                headers={'__TypeId__': message.type_id}
+                headers={'__TypeId__': message.__class__.type_id}
             )
-            if self._publish_channel:
-                self._publish_channel.basic_publish(
-                    exchange=self.exchange_name,
-                    routing_key=routing_key,
-                    body=message_body,
-                    properties=properties
-                )
-            logger.info(f"Published {message.type_id} with routing key: {routing_key}")
+
+            self._publish_channel.basic_publish(
+                exchange=self.exchange_name,
+                routing_key=routing_key,
+                body=message_body,
+                properties=properties
+            )
+
+            logger.info(f"Published message: {message.__class__.__name__} with routing key: {routing_key}")
+
         except Exception as e:
-            logger.error(f"Failed to publish message: {e}")
+            logger.error(f"Error publishing message: {e}")
 
     def close_channel(self):
-        self.close_consume_channel()
+        """Close the publish channel"""
         self.close_publish_channel()
 
     async def close(self):
-        if not self._closing:
-            self._closing = True
-            logger.info('Closing connection')
-            if self._connection and self._connection.is_open:
-                await self.stop_consuming()
-                self._connection.close()
+        """Close the connection and stop consuming"""
+        self._closing = True
+        await self.stop_consuming()
+        self.close_consume_channel()
+        self.close_publish_channel()
+        if self._connection:
+            self._connection.close()
 
 
+# Global instance for the application
 rabbitmq_client = RabbitMQClient()

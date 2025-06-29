@@ -1,6 +1,7 @@
-import os
 import pytest
-from app.repository import db, init_db
+import asyncio
+from app.repository import db
+
 
 @pytest.fixture
 def app():
@@ -9,7 +10,7 @@ def app():
     app = create_app(test=True)
 
     yield app
-    
+
     # Clean up / reset resources
     with app.app_context():
         db.session.remove()
@@ -26,3 +27,37 @@ def client(app):
 def runner(app):
     """A test CLI runner for the app."""
     return app.test_cli_runner()
+
+
+@pytest.fixture
+def rabbitmq_client(app):
+    """Get the mock RabbitMQ client from the app config."""
+    return app.config['RABBITMQ_CLIENT']
+
+
+@pytest.fixture
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest.fixture
+async def connected_rabbitmq_client(rabbitmq_client):
+    """Get a connected mock RabbitMQ client."""
+    await rabbitmq_client.connect()
+    yield rabbitmq_client
+    await rabbitmq_client.close()
+
+
+@pytest.fixture
+def sample_message():
+    """Create a sample message for testing."""
+    from app.utils.message import Message
+
+    class TestMessage(Message):
+        type_id = "test.message"
+        content: str = "test content"
+
+    return TestMessage(content="test content")

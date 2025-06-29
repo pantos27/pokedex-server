@@ -1,6 +1,6 @@
 from typing import Type
 
-from utils.rabbitmq_service import MessageSubType, MessageHandler
+from app.utils.rabbitmq_service import MessageSubType, MessageHandler
 
 
 class MessageRouter:
